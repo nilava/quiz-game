@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quiz Game</title>
+  </head>
+  <body>
+    <h1>Quiz Game</h1>
+    <div id="status">Click the button to start the game.</div>
+    <button id="start-game">Start Game</button>
+    <div id="question-section" style="display: none">
+      <h2 id="question"></h2>
+      <div id="options"></div>
+      <button id="submit-answer" disabled>Submit Answer</button>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.3/socket.io.min.js"></script>
+    <script>
+      const token =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Im5pbGF2YSIsImlhdCI6MTczNTk3MzQ0NCwiZXhwIjoxNzM1OTc3MDQ0fQ._IIUJ6t8WIr0e3egHO8drLYtZAIygTgG8m3pALEXQto'; // Replace with the actual JWT token
+      const apiUrl = 'http://localhost:3000/game/start'; // Replace with your server URL
+      const socket = io('http://localhost:3000', {
+        auth: {
+          token: `Bearer ${token}`,
+        },
+      });
+
+      let clientId = null;
+      let gameId = null;
+
+      const statusDiv = document.getElementById('status');
+      const startGameButton = document.getElementById('start-game');
+      const questionSection = document.getElementById('question-section');
+      const questionDiv = document.getElementById('question');
+      const optionsDiv = document.getElementById('options');
+      const submitButton = document.getElementById('submit-answer');
+
+      let currentQuestionId = null;
+      let selectedAnswer = null;
+
+      // Start game button
+      startGameButton.onclick = async () => {
+        statusDiv.textContent = 'Starting game...';
+        startGameButton.disabled = true;
+
+        try {
+          // Make an API call to /game/start
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              socketId: clientId, // Send the client ID as part of the payload
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to start game');
+          }
+
+          const data = await response.json();
+          statusDiv.textContent = `Waiting for another player... Room ID: ${data.roomId}`;
+        } catch (error) {
+          statusDiv.textContent = `Error: ${error.message}`;
+          startGameButton.disabled = false;
+        }
+      };
+
+      // WebSocket events
+      socket.on('connect', () => {
+        clientId = socket.id; // Get the client ID
+        console.log('Connected to WebSocket server with ID:', clientId);
+      });
+
+      socket.on('connect_error', (err) => {
+        statusDiv.textContent = `Connection failed: ${err.message}`;
+      });
+
+      socket.on('game:init', (gameSession) => {
+        statusDiv.textContent = 'Game started! Get ready!';
+        gameId = gameSession.gameId;
+        displayNextQuestion(gameSession.questions[0]); // Display the first question
+      });
+
+      socket.on('question:send', (question) => {
+        console.log('Question Received', question);
+        displayNextQuestion(question);
+      });
+
+      socket.on('game:end', (result) => {
+        statusDiv.textContent = `Game over! Winner: ${result.winner.username}`;
+        questionSection.style.display = 'none';
+      });
+
+      // Display a question
+      function displayNextQuestion(question) {
+        currentQuestionId = question._id;
+        selectedAnswer = null;
+
+        questionDiv.textContent = question.text;
+        optionsDiv.innerHTML = '';
+
+        question.options.forEach((option) => {
+          const button = document.createElement('button');
+          button.textContent = option;
+          button.onclick = () => {
+            selectedAnswer = option;
+            Array.from(optionsDiv.children).forEach(
+              (btn) => (btn.disabled = false),
+            );
+            button.disabled = true;
+            submitButton.disabled = false;
+          };
+          optionsDiv.appendChild(button);
+        });
+
+        questionSection.style.display = 'block';
+      }
+
+      // Submit an answer
+      submitButton.onclick = () => {
+        if (!selectedAnswer) return;
+        socket.emit('answer:submit', {
+          gameId: gameId,
+          socketId: clientId,
+          questionId: currentQuestionId,
+          answer: selectedAnswer,
+        });
+
+        submitButton.disabled = true;
+        statusDiv.textContent =
+          'Answer submitted! Waiting for the next question...';
+      };
+    </script>
+  </body>
+</html>

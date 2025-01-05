@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quiz Game</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f4f4;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+
+      .top-bar {
+        position: absolute;
+        top: 0;
+        right: 0;
+        padding: 10px;
+        background-color: #007bff;
+        color: white;
+        border-radius: 0 0 0 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .top-bar span {
+        margin-right: 10px;
+      }
+
+      .logout-btn {
+        padding: 5px 10px;
+        background-color: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      h1 {
+        margin-bottom: 20px;
+      }
+
+      #status {
+        margin: 10px;
+        font-size: 16px;
+        font-weight: bold;
+      }
+
+      #start-game {
+        padding: 10px 20px;
+        font-size: 16px;
+        margin-bottom: 20px;
+        cursor: pointer;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+      }
+
+      #login-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+
+      #login-section input {
+        padding: 10px;
+        margin: 5px 0;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        width: 200px;
+      }
+
+      #login-section button {
+        padding: 10px 20px;
+        margin: 5px;
+        font-size: 16px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+
+      #question-section {
+        display: none;
+        margin-top: 20px;
+        width: 80%;
+        max-width: 500px;
+      }
+
+      #question {
+        margin-bottom: 10px;
+        font-size: 18px;
+        font-weight: bold;
+      }
+
+      .option {
+        padding: 10px;
+        margin: 5px 0;
+        background-color: #ffffff;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      }
+
+      .option:hover {
+        background-color: #e8f0ff;
+      }
+
+      .selected {
+        background-color: #cce5ff;
+        border-color: #b8daff;
+      }
+
+      .correct {
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+      }
+
+      .incorrect {
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
+      }
+
+      #submit-answer {
+        padding: 10px 20px;
+        font-size: 16px;
+        margin-top: 10px;
+        background-color: #28a745;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        display: none;
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="top-bar" id="top-bar" style="display: none">
+      <span id="logged-in-user"></span>
+      <button class="logout-btn" id="logout-btn">Logout</button>
+    </div>
+    <h1>Quiz Game</h1>
+    <div id="status">Please log in or register to start the game.</div>
+    <div id="login-section">
+      <input id="username" type="text" placeholder="Username" />
+      <input id="password" type="password" placeholder="Password" />
+      <button id="login-btn">Login</button>
+      <button id="register-btn">Register</button>
+    </div>
+    <button id="start-game" style="display: none">Start Game</button>
+    <div id="question-section">
+      <h2 id="question"></h2>
+      <div id="options"></div>
+      <button id="submit-answer" disabled>Submit Answer</button>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.3/socket.io.min.js"></script>
+    <script>
+      let accessToken = localStorage.getItem('accessToken');
+      let userId = localStorage.getItem('userId');
+      let userName = localStorage.getItem('username');
+      const apiUrl = 'http://localhost:3000'; // Replace with your backend URL
+      const socketUrl = 'http://localhost:3000';
+      let socket;
+      let clientId = null;
+      let currentGameId = null;
+      let currentQuestion = null;
+      let selectedAnswer = null;
+
+      const statusDiv = document.getElementById('status');
+      const loginSection = document.getElementById('login-section');
+      const startGameButton = document.getElementById('start-game');
+      const questionSection = document.getElementById('question-section');
+      const questionDiv = document.getElementById('question');
+      const optionsDiv = document.getElementById('options');
+      const submitButton = document.getElementById('submit-answer');
+      const usernameInput = document.getElementById('username');
+      const passwordInput = document.getElementById('password');
+      const loginBtn = document.getElementById('login-btn');
+      const registerBtn = document.getElementById('register-btn');
+      const topBar = document.getElementById('top-bar');
+      const loggedInUserSpan = document.getElementById('logged-in-user');
+      const logoutBtn = document.getElementById('logout-btn');
+
+      // Check if already logged in
+      if (accessToken && userName) {
+        showLoggedInUI(userName);
+        connectWebSocket();
+      }
+
+      // Handle Login
+      loginBtn.addEventListener('click', async () => {
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value.trim();
+
+        if (!username || !password) {
+          statusDiv.textContent = 'Error: Username and password are required.';
+          return;
+        }
+
+        try {
+          const response = await fetch(`${apiUrl}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Login failed.');
+          }
+
+          const data = await response.json();
+          accessToken = data.accessToken;
+          userId = data.userId;
+          userName = data.username;
+
+          // Persist session in localStorage
+          localStorage.setItem('accessToken', accessToken);
+          localStorage.setItem('userId', userId);
+          localStorage.setItem('username', userName);
+
+          showLoggedInUI(userName);
+          connectWebSocket();
+        } catch (error) {
+          console.error('Login Error:', error.message);
+          statusDiv.textContent = `Error: ${error.message}`;
+        }
+      });
+
+      // Handle Register
+      registerBtn.addEventListener('click', async () => {
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value.trim();
+
+        if (!username || !password) {
+          statusDiv.textContent = 'Error: Username and password are required.';
+          return;
+        }
+
+        try {
+          const response = await fetch(`${apiUrl}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Registration failed.');
+          }
+
+          const data = await response.json();
+          accessToken = data.accessToken;
+          userId = data.userId;
+          userName = data.username;
+
+          // Persist session in localStorage
+          localStorage.setItem('accessToken', accessToken);
+          localStorage.setItem('userId', userId);
+          localStorage.setItem('username', userName);
+
+          showLoggedInUI(userName);
+          connectWebSocket();
+        } catch (error) {
+          console.error('Registration Error:', error.message);
+          statusDiv.textContent = `Error: ${error.message}`;
+        }
+      });
+
+      // Show UI for Logged-in User
+      function showLoggedInUI(username) {
+        statusDiv.textContent = `Welcome, ${username}!`;
+        loginSection.style.display = 'none';
+        startGameButton.style.display = 'inline-block';
+        topBar.style.display = 'flex';
+        loggedInUserSpan.textContent = `Logged in as: ${username}`;
+      }
+
+      // Logout
+      logoutBtn.addEventListener('click', () => {
+        // Clear session
+        localStorage.clear();
+        accessToken = null;
+        userId = null;
+        userName = null;
+
+        // Reset UI
+        statusDiv.textContent = 'Please log in or register to start the game.';
+        loginSection.style.display = 'flex';
+        startGameButton.style.display = 'none';
+        topBar.style.display = 'none';
+
+        if (socket) socket.disconnect();
+      });
+
+      // Connect WebSocket
+      function connectWebSocket() {
+        socket = io(socketUrl, {
+          auth: {
+            token: `Bearer ${accessToken}`,
+          },
+        });
+
+        socket.on('connect', () => {
+          clientId = socket.id;
+          console.log('Connected to WebSocket server with ID:', clientId);
+          statusDiv.textContent = 'Connected! Click "Start Game" to begin.';
+        });
+
+        socket.on('connect_error', (err) => {
+          statusDiv.textContent = `Connection failed: ${err.message}`;
+        });
+
+        socket.on('game:init', (data) => {
+          currentGameId = data.gameId;
+          statusDiv.textContent = 'Game started!';
+          startGameButton.style.display = 'none'; // Hide the start button
+          displayQuestion(data.questions[0]); // Show the first question
+        });
+
+        socket.on('question:send', (question) => {
+          setTimeout(() => displayQuestion(question), 2000); // Wait 2 seconds before showing the next question
+        });
+
+        socket.on('game:wait', () => {
+          statusDiv.textContent = 'Waiting for opponent to finish...';
+          questionSection.classList.add('hidden'); // Hide the quiz section
+        });
+
+        socket.on('game:end', (result) => {
+          const isWinner = clientId === result.winner.socketId;
+          statusDiv.textContent = isWinner
+            ? '🎉 You are the Winner! 🎉'
+            : '😞 You Lost! Better luck next time!';
+          questionSection.style.display = 'none';
+        });
+      }
+
+      // Start game button
+      startGameButton.onclick = async () => {
+        if (!clientId) {
+          statusDiv.textContent =
+            'Unable to start game: WebSocket not connected.';
+          return;
+        }
+
+        statusDiv.textContent = 'Starting game...';
+        startGameButton.disabled = true;
+
+        try {
+          const response = await fetch(`${apiUrl}/game/start`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ socketId: clientId, userId: userId }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to start game');
+          }
+
+          const data = await response.json();
+          statusDiv.textContent = data.message;
+        } catch (error) {
+          statusDiv.textContent = `Error: ${error.message}`;
+          startGameButton.disabled = false;
+        }
+      };
+
+      // Display a question
+      function displayQuestion(question) {
+        currentQuestion = question;
+        selectedAnswer = null;
+        questionDiv.textContent = question.text;
+        optionsDiv.innerHTML = '';
+
+        question.options.forEach((option) => {
+          const button = document.createElement('div');
+          button.textContent = option;
+          button.className = 'option';
+          button.onclick = () => {
+            Array.from(optionsDiv.children).forEach((btn) =>
+              btn.classList.remove('selected'),
+            );
+            button.classList.add('selected');
+            selectedAnswer = option;
+            submitButton.disabled = false;
+          };
+          optionsDiv.appendChild(button);
+        });
+
+        questionSection.style.display = 'block';
+        submitButton.style.display = 'inline-block';
+      }
+
+      // Submit an answer
+      submitButton.onclick = () => {
+        if (!selectedAnswer || !currentQuestion) return;
+
+        socket.emit('answer:submit', {
+          gameId: currentGameId,
+          socketId: clientId,
+          questionId: currentQuestion._id,
+          answer: selectedAnswer,
+        });
+
+        Array.from(optionsDiv.children).forEach((btn) => {
+          if (btn.textContent === currentQuestion.correctAnswer) {
+            btn.classList.add('correct');
+          } else if (btn.textContent === selectedAnswer) {
+            btn.classList.add('incorrect');
+          }
+          btn.onclick = null; // Disable further clicks
+        });
+
+        submitButton.disabled = true;
+        statusDiv.textContent =
+          'Answer submitted! Waiting for the next question...';
+      };
+    </script>
+  </body>
+</html>
