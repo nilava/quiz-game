@@ -38,6 +38,7 @@ export class AppModule {
     consumer
       .apply(JwtAuthMiddleware)
       .exclude(
+        { path: '/', method: RequestMethod.GET },
         { path: 'auth/login', method: RequestMethod.POST },
         { path: 'auth/register', method: RequestMethod.POST },
       )

@@ -9,6 +9,7 @@ services:
     environment:
       - MONGO_URI=mongodb://mongo:27017/quizgame
       - JWT_SECRET=${JWT_SECRET:-$(openssl rand -hex 16)}
+      - HOST_URL=http://localhost:3000
     depends_on:
       - mongo
     restart: always
