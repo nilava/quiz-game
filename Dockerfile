@@ -4,17 +4,17 @@ FROM node:18 as build
 # Set working directory
 WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json
-COPY package*.json ./
+# Copy package.json and yarn.lock
+COPY package.json yarn.lock ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies using yarn
+RUN yarn install
 
 # Copy the entire application
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN yarn build
 
 # Stage 2: Production
 FROM node:18-alpine
@@ -22,17 +22,14 @@ FROM node:18-alpine
 # Set working directory
 WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json
-COPY package*.json ./
+# Copy package.json and yarn.lock
+COPY package.json yarn.lock ./
 
-# Install only production dependencies
-RUN npm ci --only=production
+# Install only production dependencies using yarn
+RUN yarn install --production
 
 # Copy built application from the build stage
 COPY --from=build /usr/src/app/dist ./dist
-
-# Copy necessary config files
-COPY --from=build /usr/src/app/.env .env
 
 # Expose application port
 EXPOSE 3000
