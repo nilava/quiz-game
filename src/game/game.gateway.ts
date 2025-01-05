@@ -13,7 +13,13 @@ import { forwardRef, Inject } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import { ConfigService } from '../config/config.service';
 
-@WebSocketGateway()
+@WebSocketGateway({
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+})
 export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;

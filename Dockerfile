@@ -10,7 +10,7 @@ COPY package.json yarn.lock ./
 # Install dependencies using yarn
 RUN yarn install
 
-# Copy the entire application
+# Copy the entire application and the public directory
 COPY . .
 
 # Build the application
@@ -28,8 +28,9 @@ COPY package.json yarn.lock ./
 # Install only production dependencies using yarn
 RUN yarn install --production
 
-# Copy built application from the build stage
+# Copy built application and public directory
 COPY --from=build /usr/src/app/dist ./dist
+COPY --from=build /usr/src/app/public ./public
 
 # Expose application port
 EXPOSE 3000
