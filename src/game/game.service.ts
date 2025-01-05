@@ -20,7 +20,31 @@ export class GameService {
     socketId: string;
     progress: number;
   }): Promise<{ message: string; roomId?: string }> {
-    // Check for existing waiting room
+    // Check if the user is already in a room with status 'waiting'
+    const existingRoomForUser = await this.gameSessionModel.findOne({
+      status: 'waiting',
+      'players.userId': user.userId, // Check if the user is already part of a waiting room
+    });
+
+    if (existingRoomForUser) {
+      // Update the socketId of the existing user in the room
+      const playerIndex = existingRoomForUser.players.findIndex(
+        (player) => player.userId === user.userId,
+      );
+
+      if (playerIndex !== -1) {
+        existingRoomForUser.players[playerIndex].socketId = user.socketId; // Update socketId
+        await existingRoomForUser.save(); // Save the updated room
+      }
+
+      return {
+        message:
+          'You are already in a waiting room. Waiting for another player...',
+        roomId: existingRoomForUser.gameId,
+      };
+    }
+
+    // Check for an existing waiting room where the user is not already a player
     const existingSession = await this.gameSessionModel.findOne({
       status: 'waiting',
       'players.userId': { $ne: user.userId }, // Ensure current userId is not in players
@@ -43,7 +67,7 @@ export class GameService {
       return { message: 'Game started!', roomId: existingSession.gameId };
     }
 
-    // Create a new waiting room
+    // Create a new waiting room if no suitable room exists
     const gameId = this.generateGameId();
 
     const newSession = new this.gameSessionModel({

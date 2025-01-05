@@ -5,6 +5,7 @@ import { GameController } from './game.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { GameSession, GameSessionSchema } from './dto/gameSession.dto';
 import { QuestionModule } from 'src/question/question.module';
+import { ConfigService } from 'src/config/config.service';
 
 @Module({
   imports: [
@@ -14,6 +15,6 @@ import { QuestionModule } from 'src/question/question.module';
     QuestionModule,
   ],
   controllers: [GameController],
-  providers: [GameGateway, GameService],
+  providers: [GameGateway, GameService, ConfigService],
 })
 export class GameModule {}
