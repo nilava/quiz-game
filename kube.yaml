@@ -16,17 +16,14 @@ spec:
     spec:
       containers:
         - name: quiz-game
-          image: quiz-game:latest 
+          image: nilava99/quiz-game:latest 
           ports:
             - containerPort: 3000
           env:
             - name: MONGO_URI
               value: "mongodb://mongodb-service:27017/quizgame"
             - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: jwt-secret
-                  key: JWT_SECRET
+              value: "NiuZsaSgB2oPUYQD0ivhaTINQMrQCsGMImC3qEE33vH3emaCDBqGbXVi0KWuS8QS6yPanArfoDe8IP2or5atLlZy7YGJesNmyuM"
           resources:
             requests:
               memory: "128Mi"
@@ -34,6 +31,20 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quiz-game-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: quiz-game
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000      
+      # nodePort: 30001        
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -69,3 +80,17 @@ spec:
       volumes:
         - name: mongo-persistent-storage
           emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-service
+spec:
+  type: ClusterIP
+  selector:
+    app: mongodb
+  ports:
+    - protocol: TCP
+      port: 27017
+      targetPort: 27017      
+      # nodePort: 30001    

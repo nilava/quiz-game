@@ -20,64 +20,79 @@ export class GameService {
     socketId: string;
     progress: number;
   }): Promise<{ message: string; roomId?: string }> {
-    // Check if the user is already in a room with status 'waiting'
-    const existingRoomForUser = await this.gameSessionModel.findOne({
-      status: 'waiting',
-      'players.userId': user.userId, // Check if the user is already part of a waiting room
-    });
+    const session = await this.gameSessionModel.startSession();
 
-    if (existingRoomForUser) {
-      // Update the socketId of the existing user in the room
-      const playerIndex = existingRoomForUser.players.findIndex(
-        (player) => player.userId === user.userId,
-      );
+    try {
+      session.startTransaction();
 
-      if (playerIndex !== -1) {
-        existingRoomForUser.players[playerIndex].socketId = user.socketId; // Update socketId
-        await existingRoomForUser.save(); // Save the updated room
+      // Check if the user is already in a room with status 'waiting'
+      const existingRoomForUser = await this.gameSessionModel.findOne({
+        status: 'waiting',
+        'players.userId': user.userId, // Check if the user is already part of a waiting room
+      });
+
+      if (existingRoomForUser) {
+        // Update the socketId of the existing user in the room
+        const playerIndex = existingRoomForUser.players.findIndex(
+          (player) => player.userId === user.userId,
+        );
+
+        if (playerIndex !== -1) {
+          existingRoomForUser.players[playerIndex].socketId = user.socketId; // Update socketId
+          await existingRoomForUser.save(); // Save the updated room
+        }
+        await session.commitTransaction();
+
+        return {
+          message:
+            'You are already in a waiting room. Waiting for another player...',
+          roomId: existingRoomForUser.gameId,
+        };
       }
 
-      return {
-        message:
-          'You are already in a waiting room. Waiting for another player...',
-        roomId: existingRoomForUser.gameId,
-      };
+      // Check for an existing waiting room where the user is not already a player
+      const existingSession = await this.gameSessionModel.findOne({
+        status: 'waiting',
+        'players.userId': { $ne: user.userId }, // Ensure current userId is not in players
+      });
+
+      if (existingSession) {
+        const questions = await this.questionService.getRandomQuestions();
+        existingSession.players.push(user);
+        existingSession.status = 'active';
+        existingSession.questions = questions;
+        existingSession.scores = existingSession.players.map(() => 0);
+        await existingSession.save();
+
+        await session.commitTransaction();
+
+        this.gameGateway.notifyGameStart(
+          existingSession.gameId,
+          existingSession.players,
+          existingSession.questions,
+        );
+
+        return { message: 'Game started!', roomId: existingSession.gameId };
+      }
+
+      // Create a new waiting room if no suitable room exists
+      const gameId = this.generateGameId();
+
+      const newSession = new this.gameSessionModel({
+        gameId,
+        players: [user],
+        status: 'waiting',
+      });
+      await newSession.save();
+
+      await session.commitTransaction();
+
+      return { message: 'Waiting for another player...', roomId: gameId };
+    } catch (error) {
+      session.abortTransaction();
+    } finally {
+      session.endSession();
     }
-
-    // Check for an existing waiting room where the user is not already a player
-    const existingSession = await this.gameSessionModel.findOne({
-      status: 'waiting',
-      'players.userId': { $ne: user.userId }, // Ensure current userId is not in players
-    });
-
-    if (existingSession) {
-      const questions = await this.questionService.getRandomQuestions();
-      existingSession.players.push(user);
-      existingSession.status = 'active';
-      existingSession.questions = questions;
-      existingSession.scores = existingSession.players.map(() => 0);
-      await existingSession.save();
-
-      this.gameGateway.notifyGameStart(
-        existingSession.gameId,
-        existingSession.players,
-        existingSession.questions,
-      );
-
-      return { message: 'Game started!', roomId: existingSession.gameId };
-    }
-
-    // Create a new waiting room if no suitable room exists
-    const gameId = this.generateGameId();
-
-    const newSession = new this.gameSessionModel({
-      gameId,
-      players: [user],
-      status: 'waiting',
-    });
-    await newSession.save();
-
-    return { message: 'Waiting for another player...', roomId: gameId };
   }
 
   async handleAnswerSubmit(
